@@ -17,7 +17,7 @@ from models import *
 
 
 def get_hashed_password(password):
-    return sha256_crypt.encrypt(password)
+    return sha256_crypt.hash(password)
 
 
 def check_password(password_from_db, password_from_request):
@@ -38,6 +38,7 @@ def check_datetime_token(func):
             return jsonify(error='Token is invalid'), 403
         else:
             return func(checked_token=token)
+
     return wrapper
 
 
@@ -67,10 +68,10 @@ def registration():
 @app.route('/api/auth/login', methods=['POST'])
 def login():
     data = request.get_json()['auth_user']
-    try:
-        username = request.cookies.get('username')
+    username = request.cookies.get('username')
+    if username:
         checked_user = User.query.filter_by(username=username).first()
-    except:
+    else:
         checked_user = User.query.filter_by(username=data['username']).first_or_404()
 
     if check_password(checked_user.password, data['password']):
