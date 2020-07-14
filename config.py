@@ -13,7 +13,7 @@ class Config(object):
         SECRET_KEY = 'very-secret'
         return SECRET_KEY
 
-    SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:12345@localhost:5432/pynote_db'
+    SQLALCHEMY_DATABASE_URI = ''
 
 
 class ProductionConfig(Config):
