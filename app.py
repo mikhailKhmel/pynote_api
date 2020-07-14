@@ -7,11 +7,13 @@ from config import *
 from flask import Flask, request, Response, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from uuid import uuid4
+from werkzeug.contrib.cache import SimpleCache
 
 app = Flask(__name__)
 app.config.from_object(os.environ['APP_SETTINGS'])
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+cache = SimpleCache()
 
 from models import *
 
@@ -24,11 +26,21 @@ def check_password(password_from_db, password_from_request):
     return sha256_crypt.verify(password_from_request, password_from_db)
 
 
+def make_cache(token_value):
+    cache.set('token', Whitelist.query.filter_by(token=token_value).first(), timeout=5 * 60)
+
+
+def get_cache_value(key):
+    return cache.get(key)
+
+
 def check_datetime_token(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         token_req = request.get_json()['token']
-        token = Whitelist.query.filter_by(token=token_req).first_or_404()
+        token = get_cache_value('token')
+        if token is None:
+            token = Whitelist.query.filter_by(token=token_req).first_or_404()
         checked_date = (datetime.datetime.now() - token.created).days
         if checked_date >= 60:
             black_token = Blacklist(token.user_uuid, token.token)
@@ -37,6 +49,7 @@ def check_datetime_token(func):
             db.session.commit()
             return jsonify(error='Token is invalid'), 403
         else:
+            make_cache(token)
             return func(checked_token=token)
 
     return wrapper
@@ -60,6 +73,8 @@ def registration():
         db.session.add(new_user)
         db.session.add(new_white_token)
         db.session.commit()
+
+        make_cache(new_white_token.token)
         return res, 201
     else:
         return Response(status=403)
@@ -79,6 +94,7 @@ def login():
         if check_datetime_token(checked_token):
             res = jsonify(token=checked_token.token)
             res.set_cookie('username', checked_user.username)
+            make_cache(checked_token.token)
             return res, 201
         else:
             new_token = Whitelist(uuid_user=checked_user.uuid,
@@ -87,6 +103,7 @@ def login():
             db.session.commit()
             res = jsonify(token=new_token.token)
             res.set_cookie('username', checked_user.username)
+            make_cache(new_token.token)
             return res, 201
     else:
         return jsonify(error='Password is invalid'), 403
