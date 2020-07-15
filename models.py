@@ -19,6 +19,14 @@ class Note(db.Model):
     content = db.Column(db.Text())
 
 
+class Todo(db.Model):
+    __tablename__ = 'todos'
+    uuid_author = db.Column(db.String(), db.ForeignKey('users.uuid'))
+    id = db.Column(db.BigInteger(), primary_key=True)
+    content = db.Column(db.Text())
+    status = db.Column(db.Boolean(), default=False)
+
+
 class Whitelist(db.Model):
     __tablename__ = 'whitelist'
     uuid_user = db.Column(db.String(), primary_key=True)

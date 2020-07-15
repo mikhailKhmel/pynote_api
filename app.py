@@ -1,12 +1,10 @@
-import os
 import jwt
 from functools import wraps
 from passlib.hash import sha256_crypt
 
 from config import *
-from flask import Flask, request, Response, make_response, jsonify
+from flask import Flask, request, Response, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from uuid import uuid4
 from werkzeug.contrib.cache import SimpleCache
 
 app = Flask(__name__)
@@ -49,7 +47,7 @@ def check_datetime_token(func):
             db.session.commit()
             return jsonify(error='Token is invalid'), 403
         else:
-            make_cache(token)
+            make_cache(token.token)
             return func(checked_token=token)
 
     return wrapper
@@ -66,7 +64,7 @@ def registration():
         new_white_token = Whitelist(uuid_user=new_user.uuid,
                                     token=jwt.encode(data, str(Config.get_secret_key), algorithm='HS256').decode(
                                         'utf-8'))
-
+        make_cache(new_white_token.token)
         res = jsonify(token=new_white_token.token)
         res.set_cookie('username', new_user.username)
 
@@ -74,10 +72,9 @@ def registration():
         db.session.add(new_white_token)
         db.session.commit()
 
-        make_cache(new_white_token.token)
         return res, 201
     else:
-        return Response(status=403)
+        return jsonify(error='User already exists'), 403
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -109,17 +106,16 @@ def login():
         return jsonify(error='Password is invalid'), 403
 
 
-@app.route('/api/notes', methods=['POST'])
+@app.route('/api/notes/add', methods=['POST'])
 @check_datetime_token
 def post_note(checked_token):
     note = request.get_json()['note']
-    user = User.query.filter_by(uuid=checked_token.uuid_user).first()
-    db.session.add(Note(uuid_author=user.uuid, heading=note['heading'], content=note['content']))
+    db.session.add(Note(uuid_author=checked_token.uuid_user, heading=note['heading'], content=note['content']))
     db.session.commit()
     return jsonify(success=True), 201
 
 
-@app.route('/api/notes', methods=['GET'])
+@app.route('/api/notes/get', methods=['GET'])
 @check_datetime_token
 def get_notes(checked_token):
     notes_db = Note.query.filter_by(uuid_author=checked_token.uuid_user).all()
@@ -127,7 +123,7 @@ def get_notes(checked_token):
     return jsonify(notes=notes), 201
 
 
-@app.route('/api/notes', methods=['PUT'])
+@app.route('/api/notes/change', methods=['PUT'])
 @check_datetime_token
 def put_note(checked_token):
     changed_note = request.get_json()['note']
@@ -138,13 +134,31 @@ def put_note(checked_token):
     return jsonify(success=True), 201
 
 
-@app.route('/api/notes', methods=['DELETE'])
+@app.route('/api/notes/remove', methods=['DELETE'])
 @check_datetime_token
 def delete_note(checked_token):
     db.session.delete(
         Note.query.filter_by(uuid_author=checked_token.uuid_user, id=request.get_json()['id']).first_or_404())
     db.session.commit()
     return jsonify(success=True), 201
+
+
+@app.route('/api/todos/add', methods=['POST'])
+@check_datetime_token
+def add_todos(checked_token):
+    for new_todo in request.get_json()['todos']:
+        new_todo_db = Todo(uuid_author=checked_token.uuid_user, content=new_todo['content'])
+        db.session.add(new_todo_db)
+    db.session.commit()
+    return jsonify(success=True), 201
+
+
+@app.route('/api/todos/get', methods=['GET'])
+@check_datetime_token
+def get_all_todos(checked_token):
+    todos_from_db = Todo.query.filter_by(uuid_author=checked_token.uuid_user).all()
+    todos_list = [{'id': todo.id, 'content': todo.content, 'status': todo.status} for todo in todos_from_db]
+    return jsonify(todos=todos_list), 201
 
 
 if __name__ == '__main__':
